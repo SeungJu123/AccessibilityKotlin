@@ -2,15 +2,13 @@ package com.example.accessibilitykotlin
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
-import android.app.Activity
-import android.app.ActivityManager
-import android.content.Context
 import android.content.Intent
 import android.graphics.Rect
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import android.view.accessibility.AccessibilityWindowInfo
+import android.view.accessibility.AccessibilityNodeInfo.ACTION_LONG_CLICK
+import android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction
 import android.widget.Toast
 
 
@@ -19,7 +17,6 @@ class MyAccessibilityService : AccessibilityService() {
     private val TAG_NODE_CHECK = "NODEINFOS"
 
     override fun onServiceConnected() {
-        // AccessibilityService 를 ON으로 한 타이밍에 호출된다
         val serviceInfo = AccessibilityServiceInfo()
 
         // ... some settings
@@ -32,15 +29,32 @@ class MyAccessibilityService : AccessibilityService() {
         val nodeInfo = event?.source
 
         nodeInfo?.let {
-            testLog(event)
+//            testLog(event)
 
             if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
 //                nodeInfoCheck(nodeInfo, 0)
+//                customRectInfo(nodeInfo)
+//                childCheck(nodeInfo, 0)
             }
         }
 
     }
 
+    /**
+     * 최근 앱 - '모두 닫기' 버튼 클릭 함수 (보완중..)
+     */
+    private fun checkAllClearButton(info: AccessibilityNodeInfo?) {
+        info?.text?.let {
+            if (it.toString().equals("모두 닫기")) {
+                info.addAction(AccessibilityAction.ACTION_CLICK)
+            }
+        }
+    }
+
+    /**
+     * 받은 노드 정보의 자녀 노드 정보를 검색
+     * depth 값을 통한 들여쓰기 (보완중..)
+     */
     private fun nodeInfoCheck(parentInfo: AccessibilityNodeInfo?, depth: Int) {
         if (parentInfo == null || parentInfo.childCount == 0) {
             return
@@ -58,17 +72,26 @@ class MyAccessibilityService : AccessibilityService() {
         }
     }
 
+    /**
+     * 백그라운드 실행 앱에 대한 체크 및 차단
+     * 재귀 함수를 통해, 해당 앱명과, 중지버튼이 활성화되어 있는 것을 체크한다. (tCount)
+     * tCount가 2일 경우(해당 앱이 백그라운드로 동작하며, 중지 버튼이 활성화되어 노드 정보에 확인 가능한 경우),
+     * performGlobalAction (BACK, HOME) 을 통해 홈화면으로 전환한다.
+     */
     private fun childCheck(parentInfo: AccessibilityNodeInfo?, depth: Int) {
         if (parentInfo == null || parentInfo.childCount == 0) {
             return
         }
+        customLogNodeInfoSimple(parentInfo)
         var tDepth = depth
         val count = parentInfo.childCount
         var tCount: Int = 0
         for (i in 0 until count) {
             val child = parentInfo.getChild(i)
             if (child != null) {
-                if (child.text?.toString().equals("토스") || child.text?.toString().equals("중지")) {
+                if (child.text?.toString().equals("체크할 앱명") || child.text?.toString()
+                        .equals("중지")
+                ) {
                     tCount++
                 }
                 customLogNodeInfo(child.text?.toString() ?: "", tDepth)
@@ -78,11 +101,11 @@ class MyAccessibilityService : AccessibilityService() {
             }
         }
         if (tCount == 2) {
-//            performGlobalAction(GLOBAL_ACTION_BACK)
-//            performGlobalAction(GLOBAL_ACTION_HOME)
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            performGlobalAction(GLOBAL_ACTION_HOME)
             Toast.makeText(
                 applicationContext,
-                "일이삼사오육칠팔구십일이삼사오육칠팔구십일이삼사오육칠팔구십일이삼사오육칠팔구십일이삼사오육칠팔구십일이삼사오육칠팔구십일이삼사오육칠팔구십일이삼사오육칠팔구십일이삼사오육칠팔구십일이삼사오육칠팔구십일이삼사오육칠팔구십일이삼사오육칠팔구십일이삼사오육칠팔구십일이삼사오육칠팔구십일이삼사오육칠팔구십일이삼사오육칠팔구십일이삼사오육칠팔구십일이삼사오육칠팔구십일이삼사오육칠팔구십",
+                "차단용 토스트 메시지",
                 Toast.LENGTH_LONG
             ).show()
         }
@@ -90,6 +113,53 @@ class MyAccessibilityService : AccessibilityService() {
 
     private fun customLogD(header: String, text: String) {
         Log.d(TAG, "$header[$text]")
+    }
+
+    /**
+     * 해당 노드 정보의 AccessibilityAction 리스트 조회
+     *
+     * ex)
+     * TAG[AccessibilityAction: ACTION_FOCUS - null]
+     * TAG[AccessibilityAction: ACTION_SELECT - null]
+     * TAG[AccessibilityAction: ACTION_CLEAR_SELECTION - null]
+     * TAG[AccessibilityAction: ACTION_CLICK - null]
+     * TAG[AccessibilityAction: ACTION_LONG_CLICK - null]
+     * TAG[AccessibilityAction: ACTION_ACCESSIBILITY_FOCUS - null]
+     * TAG[AccessibilityAction: ACTION_SHOW_ON_SCREEN - null]
+     * TAG[AccessibilityAction: ACTION_UNKNOWN - 닫기]
+     *
+     * 일 경우, nodeInfo.performAction 함수를 통해 동작할 수 있고, actionList의 id로 UNKNOWN에 대한 동작도 가능하다.
+     */
+    private fun checkNodeInfoActionList(nodeInfo: AccessibilityNodeInfo) {
+        nodeInfo.actionList?.let {
+            for (action in it) {
+                customLogD(TAG, action.toString() ?: "")
+            }
+            nodeInfo.performAction(nodeInfo.actionList.get(nodeInfo.actionList.size - 1).id)
+            nodeInfo.performAction(ACTION_LONG_CLICK)
+        }
+    }
+
+    private fun customLogNodeInfoSimple(nodeInfo: AccessibilityNodeInfo?) {
+        nodeInfo?.let {
+            Log.d(TAG_NODE_CHECK, "-----------------------------------------------------------")
+            Log.d(TAG_NODE_CHECK, "packageName : " + nodeInfo.packageName ?: "")
+            Log.d(TAG_NODE_CHECK, "className : " + nodeInfo.className ?: "")
+            Log.d(TAG_NODE_CHECK, "text : " + nodeInfo.text ?: "")
+            Log.d(TAG_NODE_CHECK, "contentDescription : " + nodeInfo.contentDescription ?: "")
+
+            /**
+             * 최근 앱의 경우, text가 아닌 description에서 문구를 체크할 수 있다.
+             */
+            nodeInfo.contentDescription?.let {
+                if (it.toString()
+                        .contains("토스") && nodeInfo.className.equals("android.widget.FrameLayout")
+                ) {
+                    checkNodeInfoActionList(nodeInfo)
+                }
+            }
+            Log.d(TAG_NODE_CHECK, "-----------------------------------------------------------")
+        }
     }
 
     private fun customLogNodeInfo(text: String, depth: Int) {
@@ -100,62 +170,41 @@ class MyAccessibilityService : AccessibilityService() {
         Log.d(TAG_NODE_CHECK, "${tStringBuilder} ${text}")
     }
 
-    private fun testLog(event: AccessibilityEvent) {
-        val source = event?.source
+    private fun customRectInfo(nodeInfo: AccessibilityNodeInfo) {
         val RectParent = Rect()
         val RectScreen = Rect()
 
-//        event?.source.findAccessibilityNodeInfosByText()
-//        event?.source.findAccessibilityNodeInfosByViewId()
+        nodeInfo?.getBoundsInParent(RectParent)
+        nodeInfo?.getBoundsInScreen(RectScreen)
 
-        source?.getBoundsInParent(RectParent)
-        source?.getBoundsInScreen(RectScreen)
-//        Log.e(TAG, "Catch Event : " + event.toString())
         Log.e(
             TAG,
-            "Catch Event RectParent : (" + RectParent.width() + "/" + RectParent.height() + ")"
+            "nodeInfo RectParent : (" + RectParent.width() + "/" + RectParent.height() + ")"
         )
         Log.e(
             TAG,
-            "Catch Event RectScreen : (" + RectScreen.width() + "/" + RectScreen.height() + ")"
+            "nodeInfo RectScreen : (" + RectScreen.width() + "/" + RectScreen.height() + ")"
         )
+    }
+
+    private fun testLog(event: AccessibilityEvent) {
+        val source = event?.source
+        Log.e(TAG, "=========================================================================")
         Log.e(TAG, "Catch Event Package Name : " + event.getPackageName())
         Log.e(TAG, "Catch Event getClass Name : " + event.getClassName())
-        Log.e(TAG, "Catch Event nodeInfo getId : " + " ")
-//        event.source?.addAction(GLOBAL_ACTION_ACCESSIBILITY_BUTTON)
-
-//        Log.e(TAG, "Catch Event TEXT : " + event.getText())
-//        Log.e(TAG, "Catch Event ContentDescription  : " + event.getContentDescription())
-//        Log.e(TAG, "Catch Event event TYPE  :  " + event.getContentChangeTypes())
-//        Log.e(TAG, "Catch Event getSource : " + event.getSource()?.getText())
+        Log.e(TAG, "Catch Event TEXT : " + event.getText())
+        Log.e(TAG, "Catch Event ContentDescription  : " + event.getContentDescription())
+        Log.e(TAG, "Catch Event event TYPE  :  " + event.getContentChangeTypes())
+        Log.e(TAG, "Catch Event getSource : " + source?.getText())
         Log.e(TAG, "Catch Event STRING TYPE  :  " + getEventType(event))
-//        Log.e(TAG, "Catch Event int TYPE  :  " + event.getEventType())
-//        Log.e(TAG, "Catch Event getMovementGranularity  :  " + event.getMovementGranularity())
-        val systemService = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        val runningAppProcesses = systemService.runningAppProcesses
-        Log.e(TAG, "catch Event runningProcess Size : " + runningAppProcesses?.size)
-        for (runningProcess in runningAppProcesses) {
-            Log.e(TAG, "catch Event runningProcess : " + runningProcess?.processName)
-        }
-
-        val appTasks = systemService.appTasks
-        Log.e(TAG, "catch Event task Size : " + appTasks?.size)
-        for (task in appTasks) {
-            Log.e(TAG, "catch Event app Task : " + task?.taskInfo)
-        }
-
-        val s = systemService.appTasks.get(0).taskInfo.topActivity?.className
-
-        Log.e(TAG, "catch Event topActivity: " + s?.toString())
-
-
+        Log.e(TAG, "Catch Event int TYPE  :  " + event.getEventType())
+        Log.e(TAG, "Catch Event getMovementGranularity  :  " + event.getMovementGranularity())
         Log.e(
             TAG,
             "Catch Event event Type String :" + AccessibilityEvent.eventTypeToString(event.getEventType())
         )
         Log.e(TAG, "Catch Event ACTION TYPE  :  " + event.getAction())
 
-        Log.e(TAG, "=========================================================================")
         Log.e(TAG, "=========================================================================")
     }
 
@@ -181,7 +230,6 @@ class MyAccessibilityService : AccessibilityService() {
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
-        performGlobalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN)
         return super.onUnbind(intent)
     }
 }
